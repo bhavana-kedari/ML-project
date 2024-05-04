@@ -1,0 +1,361 @@
+# importing necessary libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import dask.dataframe as dd # parallel processing for pandas (to read large datasets) fixed memory issue
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+import re
+from datetime import datetime, timezone
+nltk.download('wordnet')
+import locationtagger
+import spacy
+
+# reading comments dataset (do not have enough computational power and memory space to read the entire dataset)
+data_comments = pd.read_csv('C:\\Users\\kedar\\OneDrive\\Desktop\\ML mini project\\DiseaseOutbreak_Dataset\\the-reddit-covid-dataset-comments.csv', nrows=1000000)
+
+#checking whether the data loaded
+data_comments.head()
+
+data_stats = pd.read_csv('WHO-COVID-19-global-data.csv')
+
+# handling missing values in all datasets
+nan_stats = data_stats.isna().sum()
+print('Nan values in column of Comments dataset: ',nan_stats)
+nan_comments = data_comments.isna().sum()
+print('Nan values in column of Comments dataset: ',nan_comments)
+
+# lots of missing values in comments dataset - sentiment column
+data_stats = data_stats.drop(columns = 'Country_code')
+data_comments = data_comments.drop(columns = 'sentiment')
+    
+#dropping type,id, subreddit.id, subreddit.name,subreddit.nsfw, permalink in:since they aren't relevant to the prediction
+data_comments = data_comments.drop(columns = ['type','id','subreddit.id','subreddit.nsfw', 'permalink'])
+
+# converting all utc objects to date-time objects
+data_comments['created_utc'] = pd.to_datetime(data_comments['created_utc'], unit='s', utc=True)
+data_stats['Date_reported'] = pd.to_datetime(data_stats['Date_reported'], errors='coerce')
+
+# re analaysing:\n",
+nan_stats = data_stats.isna().sum()
+print('Nan values in column of Comments dataset: ',nan_stats)
+nan_comments = data_comments.isna().sum()
+print('Nan values in column of Comments dataset: ',nan_comments)
+
+import pandas as pd
+
+# Set the total population
+total_population = 7800000000
+
+# Assuming you have a DataFrame named data_stats with a column 'Date_reported'
+data_stats['Date_reported'] = pd.to_datetime(data_stats['Date_reported'])
+data_stats['Day'] = data_stats['Date_reported'].dt.day
+data_stats['Month'] = data_stats['Date_reported'].dt.month
+data_stats['Year'] = data_stats['Date_reported'].dt.year
+
+# Grouping data by Year, Month, and Day, and calculating aggregated statistics
+daily_stats = data_stats.groupby(['Year', 'Month', 'Day']).agg({
+    'New_cases': 'sum',
+    'Cumulative_cases': 'max',  # Assuming this column represents the total cases by the end of the day
+    'New_deaths': 'sum',
+    'Cumulative_deaths': 'max'  # Assuming this column represents the total deaths by the end of the day
+}).reset_index()
+
+# Calculating the percentage of outbreak for each day
+daily_stats['Percentage_outbreak'] = (daily_stats['Cumulative_cases'] / total_population) * 100
+
+# Display the DataFrame with daily granularity
+print(daily_stats)
+
+# Assuming you have the thresholds defined as follows:
+low_threshold = 0.1
+moderate_threshold = 0.5
+
+# Assuming you have a DataFrame named 'monthly_stats' with columns: 'Year', 'Month', 'Percentage_outbreak'
+
+# Create a new column 'Outbreak_Risk' and label each month
+daily_stats['Outbreak_Risk'] = pd.cut(
+    daily_stats['Percentage_outbreak'],
+    bins=[0, low_threshold, moderate_threshold, float('inf')],
+    labels=['Low', 'Moderate', 'High']
+)
+
+# Display the result
+print(daily_stats[['Year', 'Month', 'Percentage_outbreak', 'Outbreak_Risk']])
+
+import nltk
+from nltk.sentiment import SentimentIntensityAnalyzer
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+
+# Download NLTK resources (if not already downloaded)
+nltk.download('vader_lexicon')
+nltk.download('punkt')
+nltk.download('stopwords')
+
+# Load the Sentiment Intensity Analyzer
+sid = SentimentIntensityAnalyzer()
+
+# Assuming you have a DataFrame named 'data_comments' with a column 'body'
+
+# Function to perform sentiment analysis on a text and return the compound score
+def analyze_sentiment(text):
+    # Tokenize the text
+    words = word_tokenize(text)
+    
+    # Remove stopwords
+    stop_words = set(stopwords.words('english'))
+    words = [word.lower() for word in words if word.isalnum() and word.lower() not in stop_words]
+    
+    # Calculate sentiment scores
+    sentiment_scores = sid.polarity_scores(' '.join(words))
+    
+    print('sentiment score:', sentiment_scores['compound'])
+    # Return the compound score
+    return sentiment_scores['compound']
+
+# Apply sentiment analysis to the 'body' column
+data_comments['Sentiment_Score'] = data_comments['body'].apply(analyze_sentiment)
+
+# Display the result
+print(data_comments[['body', 'Sentiment_Score']])
+
+data_comments.head()
+
+# Assuming you have a DataFrame named 'data_comments' with a column 'created_utc'
+
+# Sort the DataFrame based on 'created_utc'
+data_comments = data_comments.sort_values('created_utc')
+
+# Extract temporal features
+data_comments['hour'] = data_comments['created_utc'].dt.hour
+data_comments['day_of_week'] = data_comments['created_utc'].dt.dayofweek
+data_comments['day_of_month'] = data_comments['created_utc'].dt.day
+data_comments['month'] = data_comments['created_utc'].dt.month
+data_comments['year'] = data_comments['created_utc'].dt.year
+
+data_comments.head()
+
+# Daily activity: Sum of 'score' grouped by 'day_of_month' and 'month'
+daily_activity = data_comments.groupby(['day_of_month', 'month'])['score'].sum()
+
+# Monthly activity: Sum of 'score' grouped by 'month'
+monthly_activity = data_comments.groupby('month')['score'].sum()
+
+# Daily sentiment: Mean of 'Sentiment_Score' grouped by 'day_of_month'
+daily_sentiment = data_comments.groupby('day_of_month')['Sentiment_Score'].mean()
+
+# Print unique years
+print('unique years:', data_comments['year'].unique())
+
+# Print unique months
+print('unique months:', data_comments['month'].unique())
+
+# Print unique days
+print('unique days:', data_comments['day_of_month'].unique())
+
+import matplotlib.pyplot as plt
+
+# Assuming you have previously created 'daily_activity' and 'daily_sentiment' Series
+
+# Set the figure size
+plt.figure(figsize=(12, 6))
+
+# Daily Activity
+plt.subplot(2, 1, 1)
+daily_activity.plot(kind='bar', color='skyblue')
+plt.title('Daily Activity')
+plt.xlabel('Day of Month')
+plt.ylabel('Total Score')
+
+# Daily Sentiment
+plt.subplot(2, 1, 2)
+daily_sentiment.plot(kind='line', color='orange')
+plt.title('Daily Sentiment')
+plt.xlabel('Day of Month')
+plt.ylabel('Average Sentiment')
+
+# Adjust layout for better spacing
+plt.tight_layout()
+
+# Display the plots
+plt.show()
+
+import nltk
+from nltk import word_tokenize, sent_tokenize
+from nltk.probability import FreqDist
+
+# Download NLTK resources (if not already downloaded)
+nltk.download('punkt')
+
+def language_complexity(comment):
+    # Tokenize the comment into sentences and words
+    sentences = sent_tokenize(comment)
+    words = word_tokenize(comment)
+
+    # Calculate average sentence length
+    avg_sentence_length = len(words) / len(sentences)
+
+    # Calculate average word length
+    avg_word_length = sum(len(word) for word in words) / len(words)
+
+    # Calculate Type-Token Ratio (TTR)
+    ttr = len(set(words)) / len(words)
+
+    # Print the results
+    print(f"Average Sentence Length: {avg_sentence_length}")
+    print(f"Average Word Length: {avg_word_length}")
+    print(f"Type-Token Ratio (TTR): {ttr}")
+    
+    return avg_sentence_length, avg_word_length, ttr
+
+data_comments[['avg_length_sentence', 'avg_word_length', 'ttr']] = data_comments['body'].apply(
+    lambda x: pd.Series(language_complexity(x), index=['avg_length_sentence', 'avg_word_length', 'ttr']))
+
+ data_comments.head()
+
+data_comments.rename(columns={'year': 'Year'}, inplace=True)
+data_comments.rename(columns={'month': 'Month'}, inplace=True)
+data_comments.rename(columns={'day_of_month': 'Day'}, inplace=True)
+
+daily_comments = data_comments.groupby(['Year', 'Month', 'Day']).agg({
+    'body': 'count',               # Count of comments on the day
+    'score': 'sum',                # Sum of scores on the day
+    'Sentiment_Score': 'mean',     # Average sentiment score on the day
+    'avg_length_sentence': 'mean', # Average length of sentence on the day
+    'avg_word_length': 'mean',     # Average word length on the day
+    'ttr': 'mean'                  # Average Type-Token Ratio on the day
+    # Add more aggregation as needed
+}).reset_index()
+
+# Merge DataFrames based on common columns 'Year', 'Month', and 'Day'
+combined_data = pd.merge(daily_comments, daily_stats, on=['Year', 'Month', 'Day'])
+
+# Calculate the percentage of outbreak for each day
+combined_data['Percentage_outbreak'] = (combined_data['Cumulative_cases'] / total_population) * 100
+combined_data.drop('Outbreak_Risk', axis=1, inplace=True)
+
+# Display the combined DataFrame
+print(combined_data)
+
+nan_combined_data = combined_data.isna().sum()
+print(nan_combined_data)
+
+from sklearn.model_selection import train_test_split
+from sklearn.svm import SVR
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import StandardScaler
+
+features = combined_data[['body', 'score', 'Sentiment_Score', 'avg_length_sentence', 'avg_word_length', 'ttr',
+                           'New_cases', 'Cumulative_cases', 'New_deaths', 'Cumulative_deaths']]
+
+# Target variable
+target = combined_data['Percentage_outbreak']
+
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2, random_state=42)
+
+# Standardize features (important for SVR)
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Initialize SVR model
+svr_model = SVR(kernel='linear')  # You can try different kernels (linear, rbf, poly, etc.)
+
+# Train SVR model
+svr_model.fit(X_train_scaled, y_train)
+
+# Make predictions on the test set
+predictions = svr_model.predict(X_test_scaled)
+
+# Evaluate the SVR model
+mse = mean_squared_error(y_test, predictions)
+print(f'SVR MSE: {mse:.4f}')
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Combine the actual values and predicted values into a DataFrame
+result_df = pd.DataFrame({
+    'Actual Percentage Outbreak': y_test.values,
+    'Predicted Percentage Outbreak': predictions
+})
+print(result_df)
+
+# Plot the actual vs. predicted values with different colors
+plt.figure(figsize=(10, 6))
+plt.scatter(result_df.index, result_df['Actual Percentage Outbreak'], color='blue', label='Actual', alpha=0.7)
+plt.scatter(result_df.index, result_df['Predicted Percentage Outbreak'], color='orange', label='Predicted', alpha=0.7)
+plt.title('Actual vs Predicted Percentage Outbreak (SVR)')
+plt.xlabel('Sample Index')
+plt.ylabel('Percentage Outbreak')
+plt.legend()
+plt.show()
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.svm import SVR
+from sklearn.datasets import make_regression
+
+# Create a synthetic dataset with two features for illustration
+X, y = make_regression(n_samples=100, n_features=2, noise=10, random_state=42)
+
+# Fit SVR model
+svr_model = SVR(kernel='linear')
+svr_model.fit(X, y)
+
+# Get the coefficients and intercept of the hyperplane
+coef = svr_model.coef_[0]
+intercept = svr_model.intercept_
+
+# Plot the training data points
+plt.scatter(X[:, 0], X[:, 1], c=y, cmap='viridis', edgecolors='k', marker='o', label='Training Data')
+
+# Plot the hyperplane
+x0_range = np.linspace(X[:, 0].min(), X[:, 0].max(), 100)
+x1_range = np.linspace(X[:, 1].min(), X[:, 1].max(), 100)
+x0, x1 = np.meshgrid(x0_range, x1_range)
+y_pred = coef[0] * x0 + coef[1] * x1 + intercept
+
+plt.contour(x0, x1, y_pred, levels=[0], colors='r', linewidths=2, label='SVR Hyperplane')
+
+# Customize the plot
+plt.title('SVR Hyperplane Visualization')
+plt.xlabel('Feature 1')
+plt.ylabel('Feature 2')
+plt.legend()
+plt.show()
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import r2_score, mean_squared_error
+
+# Plotting the scatter plot with different colors for actual vs predicted
+plt.figure(figsize=(10, 6))
+plt.scatter(y_test, predictions, alpha=0.5, color='blue', label='Actual')
+plt.scatter(y_test, predictions, alpha=0.5, color='orange', label='Predicted')
+plt.title('Actual vs Predicted Percentage Outbreak (SVR)')
+plt.xlabel('Actual Percentage Outbreak')
+plt.ylabel('Predicted Percentage Outbreak')
+plt.legend()
+plt.show()
+
+# Plotting the residual plot with different colors
+residuals = y_test - predictions
+plt.figure(figsize=(10, 6))
+sns.histplot(residuals, kde=True, color='green')
+plt.title('Residuals Distribution (SVR)')
+plt.xlabel('Residuals')
+plt.ylabel('Frequency')
+plt.show()
+
+# Print R-squared and MSE
+r_squared = r2_score(y_test, predictions)
+mse = mean_squared_error(y_test, predictions)
+
+print(f'R-squared: {r_squared:.4f}')
+print(f'Mean Squared Error (MSE): {mse:.4f}')
+
